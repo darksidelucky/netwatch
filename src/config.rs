@@ -48,6 +48,10 @@ pub struct NetwatchConfig {
     /// AI insights endpoint: "local" → http://localhost:11434, or a full base URL
     pub insights_endpoint: String,
 
+    /// Enable WHOIS lookups via rdap.org (sends each public IP to a third-party
+    /// service — disable on sensitive networks)
+    pub whois_enabled: bool,
+
     /// Color theme (dark, light, solarized, dracula, nord)
     pub theme: String,
 }
@@ -83,6 +87,7 @@ impl Default for NetwatchConfig {
             insights_enabled: false,
             insights_model: "llama3.2".into(),
             insights_endpoint: "local".into(),
+            whois_enabled: true,
             theme: "dark".into(),
         }
     }
@@ -235,6 +240,7 @@ show_geo = false
             insights_enabled: true,
             insights_model: "llama3:8b".into(),
             insights_endpoint: "local".into(),
+            whois_enabled: false,
             theme: "dark".into(),
         };
         let serialized = toml::to_string_pretty(&cfg).unwrap();

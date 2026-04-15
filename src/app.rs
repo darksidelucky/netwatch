@@ -254,7 +254,7 @@ impl App {
             show_help: false,
             geo_cache: GeoCache::with_mmdb(&user_config.geoip_db, &user_config.geoip_asn_db),
             show_geo: user_config.show_geo,
-            whois_cache: WhoisCache::new(),
+            whois_cache: WhoisCache::new(user_config.whois_enabled),
             bookmarks: HashSet::new(),
             traceroute_runner: TracerouteRunner::new(),
             traceroute_view_open: false,

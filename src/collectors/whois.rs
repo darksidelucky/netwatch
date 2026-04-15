@@ -24,55 +24,58 @@ enum WhoisEntry {
 
 #[derive(Clone)]
 pub struct WhoisCache {
+    enabled: bool,
     cache: Arc<Mutex<HashMap<String, WhoisEntry>>>,
     tx: std_mpsc::Sender<String>,
 }
 
 impl Default for WhoisCache {
     fn default() -> Self {
-        Self::new()
+        Self::new(true)
     }
 }
 
 impl WhoisCache {
-    pub fn new() -> Self {
+    pub fn new(enabled: bool) -> Self {
         let (tx, rx) = std_mpsc::channel::<String>();
         let cache = Arc::new(Mutex::new(HashMap::new()));
-        let resolver_cache = Arc::clone(&cache);
-        thread::spawn(move || {
-            let now = Instant::now();
-            let mut last_request = now.checked_sub(Duration::from_millis(2000)).unwrap_or(now);
-            while let Ok(ip) = rx.recv() {
-                // Rate limit: ~1 request per 2s
-                let elapsed = last_request.elapsed();
-                if elapsed < Duration::from_millis(2000) {
-                    thread::sleep(Duration::from_millis(2000) - elapsed);
-                }
-                last_request = Instant::now();
+        if enabled {
+            let resolver_cache = Arc::clone(&cache);
+            thread::spawn(move || {
+                let now = Instant::now();
+                let mut last_request = now.checked_sub(Duration::from_millis(2000)).unwrap_or(now);
+                while let Ok(ip) = rx.recv() {
+                    // Rate limit: ~1 request per 2s
+                    let elapsed = last_request.elapsed();
+                    if elapsed < Duration::from_millis(2000) {
+                        thread::sleep(Duration::from_millis(2000) - elapsed);
+                    }
+                    last_request = Instant::now();
 
-                let result = lookup_whois(&ip);
-                let mut c = resolver_cache.lock().unwrap();
-                match result {
-                    Some(info) => {
-                        c.insert(ip, WhoisEntry::Resolved(info));
+                    let result = lookup_whois(&ip);
+                    let mut c = resolver_cache.lock().unwrap();
+                    match result {
+                        Some(info) => {
+                            c.insert(ip, WhoisEntry::Resolved(info));
+                        }
+                        None => {
+                            c.insert(ip, WhoisEntry::Failed);
+                        }
                     }
-                    None => {
-                        c.insert(ip, WhoisEntry::Failed);
+                    if c.len() > WHOIS_CACHE_MAX {
+                        let keys: Vec<String> = c.keys().take(WHOIS_CACHE_MAX / 4).cloned().collect();
+                        for k in keys {
+                            c.remove(&k);
+                        }
                     }
                 }
-                if c.len() > WHOIS_CACHE_MAX {
-                    let keys: Vec<String> = c.keys().take(WHOIS_CACHE_MAX / 4).cloned().collect();
-                    for k in keys {
-                        c.remove(&k);
-                    }
-                }
-            }
-        });
-        Self { cache, tx }
+            });
+        }
+        Self { enabled, cache, tx }
     }
 
     pub fn lookup(&self, ip: &str) -> Option<WhoisInfo> {
-        if ip == "—" || ip.is_empty() || is_private_ip(ip) {
+        if !self.enabled || ip == "—" || ip.is_empty() || is_private_ip(ip) {
             return None;
         }
         let mut cache = self.cache.lock().unwrap();
@@ -89,7 +92,7 @@ impl WhoisCache {
 
     /// Queue an IP for lookup if not already cached (explicit trigger)
     pub fn request(&self, ip: &str) {
-        if ip == "—" || ip.is_empty() || is_private_ip(ip) {
+        if !self.enabled || ip == "—" || ip.is_empty() || is_private_ip(ip) {
             return;
         }
         let mut cache = self.cache.lock().unwrap();
