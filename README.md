@@ -6,7 +6,7 @@
   <p align="center">
     <a href="https://crates.io/crates/netwatch-tui"><img src="https://img.shields.io/crates/v/netwatch-tui.svg" alt="crates.io"></a>
     <a href="https://github.com/matthart1983/netwatch/releases"><img src="https://img.shields.io/github/v/release/matthart1983/netwatch" alt="Release"></a>
-    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue" alt="Platform">
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue" alt="Platform">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
     <a href="https://github.com/matthart1983/netwatch/wiki"><img src="https://img.shields.io/badge/docs-Wiki-blue?logo=github" alt="Wiki"></a>
   </p>
@@ -48,8 +48,11 @@ cargo install netwatch-tui
 | Linux (aarch64, static — Arch/Fedora/Alpine/any distro) | [`netwatch-linux-aarch64-static.tar.gz`](https://github.com/matthart1983/netwatch/releases/latest) |
 | macOS (Intel) | [`netwatch-macos-x86_64.tar.gz`](https://github.com/matthart1983/netwatch/releases/latest) |
 | macOS (Apple Silicon) | [`netwatch-macos-aarch64.tar.gz`](https://github.com/matthart1983/netwatch/releases/latest) |
+| Windows (x86_64) | [`netwatch-windows-x86_64.exe.zip`](https://github.com/matthart1983/netwatch/releases/latest) |
 
 The `-static` Linux builds bundle libpcap and have no runtime dependencies — use these on Arch, Fedora, Alpine, or any distro where the default builds report `libpcap.so.0.8: cannot open shared object file`.
+
+On Windows, packet capture requires the [Npcap](https://npcap.com) driver to be installed (not just the SDK used to build it) — install it in "WinPcap API-compatible mode" if you also run other capture tools. Without it, netwatch still runs fine for interface stats and connections; only capture is unavailable.
 
 **From source:**
 
@@ -58,7 +61,7 @@ git clone https://github.com/matthart1983/netwatch.git && cd netwatch
 cargo build --release
 ```
 
-**Prerequisites:** Rust 1.70+, libpcap (`sudo apt install libpcap-dev` on Linux, included on macOS)
+**Prerequisites:** Rust 1.70+, libpcap (`sudo apt install libpcap-dev` on Linux, included on macOS), or the [Npcap SDK](https://npcap.com) on Windows (download it and point the `LIB` env var at its `Lib\x64` directory — see [CONTRIBUTING.md](CONTRIBUTING.md))
 
 </details>
 
@@ -66,9 +69,12 @@ cargo build --release
 
 ```bash
 netwatch            # Interface stats, connections, config
-sudo netwatch       # Full mode — adds health probes + packet capture
+sudo netwatch       # Full mode — adds health probes + packet capture (macOS/Linux)
 netwatch --generate-config
+netwatch --version | --help
 ```
+
+On Windows, run from an elevated (Administrator) terminal instead of `sudo` to unlock health probes and packet capture.
 
 ### Flight Recorder
 
@@ -290,7 +296,7 @@ This makes bug reports, incident reviews, and demos much easier: you keep the pa
 
 ## Permissions
 
-| Feature | `netwatch` | `sudo netwatch` |
+| Feature | `netwatch` | `sudo netwatch` / Administrator |
 |---------|:---:|:---:|
 | Interface stats & rates | ✅ | ✅ |
 | Active connections | ✅ | ✅ |
@@ -298,7 +304,7 @@ This makes bug reports, incident reviews, and demos much easier: you keep the pa
 | Health probes (ICMP) | ❌ | ✅ |
 | Packet capture | ❌ | ✅ |
 
-Degrades gracefully — features that need root show a clear message, never crash.
+Degrades gracefully — features that need elevated privileges show a clear message, never crash. On Windows, packet capture additionally requires the Npcap driver (see [Install](#install)).
 
 ---
 
@@ -326,13 +332,13 @@ That writes a starter config file to your platform config directory. You can als
 
 ## How It Works
 
-| Collector | Interval | macOS | Linux |
-|-----------|:--------:|-------|-------|
-| Interface stats | 1s | `netstat -ib` | `/sys/class/net/*/statistics` |
-| Connections | 2s | `lsof -i -n -P` | `/proc/net/tcp` + `/proc/*/fd` |
-| Health probes | 5s | `ping` | `ping` |
-| Packets | Real-time | libpcap (BPF) | libpcap |
-| GeoIP | On-demand | MaxMind .mmdb / ip-api.com | MaxMind .mmdb / ip-api.com |
+| Collector | Interval | macOS | Linux | Windows |
+|-----------|:--------:|-------|-------|---------|
+| Interface stats | 1s | `netstat -ib` | `/sys/class/net/*/statistics` | `Get-NetAdapterStatistics` (PowerShell), falls back to `netstat -e` |
+| Connections | 2s | `lsof -i -n -P` | `/proc/net/tcp` + `/proc/*/fd` | `netstat -ano` + `tasklist` |
+| Health probes | 5s | `ping` | `ping` | `ping` |
+| Packets | Real-time | libpcap (BPF) | libpcap | Npcap |
+| GeoIP | On-demand | MaxMind .mmdb / ip-api.com | MaxMind .mmdb / ip-api.com | MaxMind .mmdb / ip-api.com |
 
 ```
 Raw bytes → Ethernet → IPv4/IPv6/ARP → TCP/UDP/ICMP → DNS/TLS/HTTP/DHCP/NTP
